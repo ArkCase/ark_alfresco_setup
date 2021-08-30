@@ -190,19 +190,26 @@ def handle_root_category(root):
         get_root = requests.get(url=root_get_url, headers=headers)
         root_json = get_root.json()
         for root_entry in root_json['list']['entries']:
-            print('Got root ' + root_entry['entry']['id'])
+            print('Root category already exists: ' + root_entry['entry']['id'])
             return root_entry['entry']['id']
     else: 
        root_json = post_root.json()
-       print('Created root ' + root)
+       print('Created root category: ' + root)
        return root_json['entry']['id']
 
 
 def handle_category(category_name, root_guid):
     category_payload = json.dumps({'name': category_name, 'nodeType': 'rma:recordCategory'})
-    category_post = hostname + ags_services_path + '/record-categories/' + root_guid + '/children'
-    post_category = requests.post(url=category_post, data=category_payload, headers=headers)
-    print(post_category)
+    create_category_url = hostname + ags_services_path + '/record-categories/' + root_guid + '/children'
+    create_category = requests.post(url=create_category_url, data=category_payload, headers=headers)
+    status_code = create_category.status_code
+    if status_code == 201:
+        print('Category ' + category_name + ' created in ' + root_guid)
+    elif status_code == 409:
+        print('Category with name ' + category_name + ' already exists in ' + root_guid)
+    else:
+        print(status_code)
+        print('Unknown error occurred when creating category')
 
 
 def find_rm_role():

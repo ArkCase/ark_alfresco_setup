@@ -10,7 +10,7 @@ import json
 # line 5: rm site
 # line 6: folder1, folder2
 # line 7: rm root category
-# line 7: rm category1, rm category2
+# line 8: rm category1, rm category2
 
 # For example:
 # http://localhost:8080,admin,admin
@@ -22,11 +22,9 @@ import json
 # ACM
 # Case Files,Complaints,Document Repositories,Requests,Tasks,Consultations,SAR
 
-# Todo: Load input file from terminal
-
 content_services_path = '/alfresco/api/-default-/public/alfresco/versions/1'
 ags_services_path = '/alfresco/api/-default-/public/gs/versions/1'
-filename = 'C:\\properties.csv'
+filename = './alfresco_setup.properties'
 
 
 def remove_eol(string: str):
@@ -187,9 +185,17 @@ def handle_root_category(root):
     root_payload = json.dumps({'name': root})
     root_post_url = hostname + ags_services_path + '/file-plans/' + '-filePlan-' + '/categories'
     post_root = requests.post(url=root_post_url, data=root_payload, headers=headers)
-    root_json = post_root.json()
-    print('Created root ' + root)
-    return root_json['entry']['id']
+    if post_root.status_code == 409:
+        root_get_url = hostname + ags_services_path + '/file-plans/' + '-filePlan-' + '/categories'
+        get_root = requests.get(url=root_get_url, headers=headers)
+        root_json = get_root.json()
+        for root_entry in root_json['list']['entries']:
+            print('Got root ' + root_entry['entry']['id'])
+            return root_entry['entry']['id']
+    else: 
+       root_json = post_root.json()
+       print('Created root ' + root)
+       return root_json['entry']['id']
 
 
 def handle_category(category_name, root_guid):
@@ -211,9 +217,18 @@ def find_rm_role():
             return group_id
 
 
-def add_as_rm_admin(admin_id, user_name):
+#def add_user_as_rm_admin(admin_id, user_name):
+#    groups_post = hostname + content_services_path + '/groups/' + admin_id + '/members'
+#    groups_payload = json.dumps({'id': user_name, 'memberType': 'PERSON'})
+#    post_groups = requests.post(url=groups_post, data=groups_payload, headers=headers)
+#    print(post_groups)
+
+
+def add_group_as_rm_admin(admin_id, group_name):
+    print ('admin_id: ' + admin_id + ' group_name: ' + group_name)
     groups_post = hostname + content_services_path + '/groups/' + admin_id + '/members'
-    groups_payload = json.dumps({'id': user_name, 'memberType': 'PERSON'})
+    print ('groups_post URL: ' + groups_post)
+    groups_payload = json.dumps({'id': group_name, 'memberType': 'GROUP'})
     post_groups = requests.post(url=groups_post, data=groups_payload, headers=headers)
     print(post_groups)
 
@@ -236,7 +251,6 @@ def handle_rm_site(rm_site_name, user_list, root_cat, category_list):
         for category in category_list:
             handle_category(category, root_guid)
 
-
 for user in users:
     handle_user(user)
 
@@ -252,4 +266,6 @@ for rm_site in rm_sites:
 
 rm_admin_id = find_rm_role()
 
-add_as_rm_admin(rm_admin_id, 'not_a_user3')
+for group in groups:
+    print ('group: ' + group)
+    add_group_as_rm_admin(rm_admin_id, group)

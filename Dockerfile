@@ -14,9 +14,11 @@ WORKDIR /app
 ARG resource_path=artifacts
 
 COPY ${resource_path}/setup_alfresco.py .
+COPY ${resource_path}/alfresco_setup.properties .
 
 RUN yum update -y && \
-    yum install python3 -y && \
+    yum install python3-pip -y && \
+    pip3 install requests && \
     yum clean all && \
     useradd --system --no-create-home --home-dir /app alfresco && \
     chmod +x /app/setup_alfresco.py && \

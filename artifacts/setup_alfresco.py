@@ -168,7 +168,7 @@ def handle_site(site_id, user_list, folder_list):
         create_site = requests.post(post_url, data=site_payload, headers=headers)
         print('Site created with below values')
         print(create_site.json())
-        entry = create_site["entry"]
+        entry = create_site.json()["entry"]
         site_guid = entry["guid"]
         # Create json is not the same as 200 json
     else:
@@ -194,7 +194,7 @@ def handle_root_category(root):
             return root_entry['entry']['id']
     else: 
        root_json = post_root.json()
-       print('Created root category: ' + root)
+       print('Created root category: ' + root + ' with id ' + root_json['entry']['id'])
        return root_json['entry']['id']
 
 
@@ -212,32 +212,38 @@ def handle_category(category_name, root_guid):
         print('Unknown error occurred when creating category')
 
 
-def find_rm_role():
+def find_rm_role(rm_role):
     groups_get = hostname + content_services_path + '/groups'
     get_groups = requests.get(url=groups_get, headers=headers)
     json_resp = get_groups.json()
     for entry in json_resp['list']['entries']:
-        print(entry)
         group_id = str(entry['entry']['id'])
         display_name = str(entry['entry']['displayName'])
-        if display_name == 'rm.role.administrator':
+        print('displayName: ' + display_name)
+        if display_name == rm_role:
+            print('RM Role Name: ' + display_name + ' RM Role ID: ' + group_id)
             return group_id
+    return ""
 
 
-#def add_user_as_rm_admin(admin_id, user_name):
-#    groups_post = hostname + content_services_path + '/groups/' + admin_id + '/members'
-#    groups_payload = json.dumps({'id': user_name, 'memberType': 'PERSON'})
-#    post_groups = requests.post(url=groups_post, data=groups_payload, headers=headers)
-#    print(post_groups)
+def add_user_as_rm_admin(admin_id, user_name):
+    groups_post = hostname + content_services_path + '/groups/' + admin_id + '/members'
+    groups_payload = json.dumps({'id': user_name, 'memberType': 'PERSON'})
+    post_groups = requests.post(url=groups_post, data=groups_payload, headers=headers)
+    print(post_groups)
 
 
 def add_group_as_rm_admin(admin_id, group_name):
-    print ('admin_id: ' + admin_id + ' group_name: ' + group_name)
     groups_post = hostname + content_services_path + '/groups/' + admin_id + '/members'
-    print ('groups_post URL: ' + groups_post)
     groups_payload = json.dumps({'id': group_name, 'memberType': 'GROUP'})
     post_groups = requests.post(url=groups_post, data=groups_payload, headers=headers)
-    print(post_groups)
+    status_code = post_groups.status_code
+    if status_code == 201:
+        print('Success adding ' + group_name + ' to role ' + admin_id)
+    elif status_code == 409:
+        print(group_name + ' is already a member of ' + admin_id)
+    else:
+        print('Error [' + str(status_code) + '] adding ' + group_name + ' to role ' + admin_id)
 
 
 def handle_rm_site(rm_site_name, user_list, root_cat, category_list):
@@ -270,9 +276,8 @@ for site in sites:
 for rm_site in rm_sites:
     handle_rm_site(rm_site, users, root_category, rm_categories)
 
+rm_admin_id = find_rm_role('Records Management Administrator')
 
-rm_admin_id = find_rm_role()
-
-for group in groups:
-    print ('group: ' + group)
-    add_group_as_rm_admin(rm_admin_id, group)
+if rm_admin_id != "":
+    for group in groups:
+        add_group_as_rm_admin(rm_admin_id, 'GROUP_' + group)

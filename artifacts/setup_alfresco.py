@@ -139,7 +139,7 @@ def handle_folder(folder, site_id, site_guid):
 
 
 def handle_site_memberships(member, role, site_path, site_id):
-    user_role_payload = json.dumps({'role': role, 'id': user})
+    user_role_payload = json.dumps({'role': role, 'id': member})
     if member.startswith('GROUP_'):
         assign_role_url = hostname + content_services_path + site_path + '/' + site_id + '/group-members'
     else:
@@ -197,10 +197,10 @@ def handle_root_category(root):
         for root_entry in root_json['list']['entries']:
             print('Root category already exists: ' + root_entry['entry']['id'])
             return root_entry['entry']['id']
-    else: 
-       root_json = post_root.json()
-       print('Created root category: ' + root + ' with id ' + root_json['entry']['id'])
-       return root_json['entry']['id']
+    else:
+        root_json = post_root.json()
+        print('Created root category: ' + root + ' with id ' + root_json['entry']['id'])
+        return root_json['entry']['id']
 
 
 def handle_category(category_name, root_guid):
@@ -262,6 +262,12 @@ def handle_rm_site(rm_site_name, user_list, group_list, root_cat, category_list)
         site_json = got_site.json()
         entry = site_json["entry"]
         site_guid = entry["guid"]
+    else:
+        print('RM site does not exist, creating RM site')
+        rm_site_post_url = hostname + ags_services_path + '/gs-sites'
+        rm_site_payload = json.dumps({'title': 'Records Management'})
+        post_rm_site = requests.post(url=rm_site_post_url, data=rm_site_payload, headers=headers)
+        print('Created RM site')
     for user in user_list:
         handle_site_memberships(user, 'SiteManager', site_path, site_id)
     for group in group_list:
@@ -270,6 +276,15 @@ def handle_rm_site(rm_site_name, user_list, group_list, root_cat, category_list)
         root_guid = handle_root_category(root_c)
         for category in category_list:
             handle_category(category, root_guid)
+
+
+alfresco_probe_url = hostname + content_services_path + "/probes/-live-"
+get_probe = requests.get(url=alfresco_probe_url, headers=headers)
+if get_probe.status_code != 200:
+    print('Alfresco has not finished starting')
+    quit()
+
+print('Alfresco finished starting')
 
 for user in users:
     handle_user(user)

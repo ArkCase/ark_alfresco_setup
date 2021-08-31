@@ -1,6 +1,7 @@
 #  Alfresco Setup build
 
-FROM 345280441424.dkr.ecr.ap-south-1.amazonaws.com/ark_base:latest
+#FROM 345280441424.dkr.ecr.ap-south-1.amazonaws.com/ark_base:latest
+FROM centos:7
 
 LABEL ORG="Armedia LLC" \
       APP="Alfresco Setup" \

@@ -138,18 +138,21 @@ def handle_folder(folder, site_id, site_guid):
         print('Unknown error occurred when creating folder')
 
 
-def handle_site_manager(user, site_path, site_id):
-    user_role_payload = json.dumps({'role': 'SiteManager', 'id': user})
-    assign_role_url = hostname + content_services_path + site_path + '/' + site_id + '/members'
+def handle_site_memberships(member, role, site_path, site_id):
+    user_role_payload = json.dumps({'role': role, 'id': user})
+    if member.startswith('GROUP_'):
+        assign_role_url = hostname + content_services_path + site_path + '/' + site_id + '/group-members'
+    else:
+        assign_role_url = hostname + content_services_path + site_path + '/' + site_id + '/members'
     assign_role = requests.post(assign_role_url, data=user_role_payload, headers=headers)
     status_code = assign_role.status_code
     if status_code == 409:
-        print(user + ' is already a member of ' + site_id)
+        print(member + ' is already a member of ' + site_id)
     else:
-        print(user + ' added as a site manager to ' + site_id)
+        print(member + ' added as a site manager to ' + site_id)
 
 
-def handle_site(site_id, user_list, folder_list):
+def handle_site(site_id, user_list, group_list, folder_list):
     """Check if site exists, create it if it doesn't."""
     site_path = '/sites'
     get_url = hostname + content_services_path + site_path + '/' + site_id
@@ -176,7 +179,9 @@ def handle_site(site_id, user_list, folder_list):
         print('Unknown error occurred when checking site.  Stopping subsequent activity.')
         return
     for user in user_list:
-        handle_site_manager(user, site_path, site_id)
+        handle_site_memberships(user, 'SiteManager', site_path, site_id)
+    for group in group_list:
+        handle_site_memberships('GROUP_' + group, 'SiteManager', site_path, site_id)
     for folder in folder_list:
         handle_folder(folder, site_id, site_guid)
 
@@ -246,7 +251,7 @@ def add_group_as_rm_admin(admin_id, group_name):
         print('Error [' + str(status_code) + '] adding ' + group_name + ' to role ' + admin_id)
 
 
-def handle_rm_site(rm_site_name, user_list, root_cat, category_list):
+def handle_rm_site(rm_site_name, user_list, group_list, root_cat, category_list):
     site_id = rm_site_name
     site_path = '/sites'
     get_url = hostname + content_services_path + site_path + '/' + site_id
@@ -258,7 +263,9 @@ def handle_rm_site(rm_site_name, user_list, root_cat, category_list):
         entry = site_json["entry"]
         site_guid = entry["guid"]
     for user in user_list:
-        handle_site_manager(user, site_path, site_id)
+        handle_site_memberships(user, 'SiteManager', site_path, site_id)
+    for group in group_list:
+        handle_site_memberships('GROUP_' + group, 'SiteManager', site_path, site_id)
     for root_c in root_cat:
         root_guid = handle_root_category(root_c)
         for category in category_list:
@@ -271,10 +278,10 @@ for group in groups:
     handle_groups(group)
 
 for site in sites:
-    handle_site(site, users, folders)
+    handle_site(site, users, groups, folders)
 
 for rm_site in rm_sites:
-    handle_rm_site(rm_site, users, root_category, rm_categories)
+    handle_rm_site(rm_site, users, groups, root_category, rm_categories)
 
 rm_admin_id = find_rm_role('Records Management Administrator')
 

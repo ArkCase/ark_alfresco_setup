@@ -1,81 +1,60 @@
 import base64
 import requests
 import json
+from os import environ
 
-# Template CSV file looks like
-# line 1: Base URL, username, password
-# line 2: user1, user2, ...
-# line 3: group1, group2, ...
-# line 4: public site1, public site2, ...
-# line 5: rm site
-# line 6: folder1, folder2
-# line 7: rm root category
-# line 8: rm category1, rm category2
-
+# This sets up an Alfresco 7.0.0 instance to work with ArkCase
+# It reads values from environment variables
 # For example:
-# http://localhost:8080,admin,admin
-# yasser
-# ARKCASE_ENTITY_ADMINISTRATOR,ARKCASE_CONSUMER,ARKCASE_SUPERVISOR,ARKCASE_ADMINISTRATOR,ARKCASE_EXTERNAL,ARKCASE_CONTRIBUTOR
-# acm
-# rm
-# Case Files,Complaints,Document Repositories,Expenses,People,Recycle Bin,Tasks,Timesheets,User Profile,Business Processes,Consultations,SAR,Requests
-# ACM
-# Case Files,Complaints,Document Repositories,Requests,Tasks,Consultations,SAR
+# ALFRESCO_BASE_URL = http://ec2-54-224-31-118.compute-1.amazonaws.com:8080
+# ALFRESCO_ADMIN_USERNAME = admin
+# ALFRESCO_ADMIN_PASSWORD = admin
+# USERS = yasser
+# GROUPS = ARKCASE_ENTITY_ADMINISTRATOR,ARKCASE_CONSUMER,ARKCASE_SUPERVISOR,ARKCASE_ADMINISTRATOR,ARKCASE_EXTERNAL,ARKCASE_CONTRIBUTOR
+# SITES = acm
+# CREATE_RM_SITE = true
+# FOLDERS = Case Files,Complaints,Document Repositories,Expenses,People,Recycle Bin,Tasks,Timesheets,User Profile,Business Processes,Consultations,SAR,Requests
+# ROOT_CATEGORY = ACM
+# CATEGORIES = Case Files,Complaints,Document Repositories,Requests,Tasks,Consultations,SAR
+# SITE_MEMBERSHIP_ROLE = SiteManager
+# RM_ROLE = Records Management Administrator
 
 content_services_path = '/alfresco/api/-default-/public/alfresco/versions/1'
 ags_services_path = '/alfresco/api/-default-/public/gs/versions/1'
-filename = './alfresco_setup.properties'
 
-
-def remove_eol(string: str):
-    """When loading a line from a file, it has a \n on it.  This removes it."""
-    if string.find('\n') != -1:
-        return string[0:string.__len__() - 1]
-    else:
-        return string
-
-
-properties = open(filename)
-
-line = remove_eol(properties.readline())
-env_vars = line.split(',')
-
-hostname = env_vars[0]
-username = env_vars[1]
-password = env_vars[2]
-
+hostname = environ['ALFRESCO_BASE_URL']
+username = environ['ALFRESCO_ADMIN_USERNAME']
+password = environ['ALFRESCO_ADMIN_PASSWORD']
 base64string = base64.b64encode(bytes('%s:%s' % (username, password), 'ascii'))
 headers = {"Authorization": "Basic %s" % base64string.decode('utf-8'), 'Content\u002DType': "application/json",
            "Accept": "application/json"}
 
-line = remove_eol(properties.readline())
+line = environ['USERS']
 users = line.split(',')
 
-line = remove_eol(properties.readline())
+line = environ['GROUPS']
 groups = line.split(',')
 
-line = remove_eol(properties.readline())
+line = environ['SITES']
 sites = line.split(',')
 
-line = remove_eol(properties.readline())
-rm_sites = line.split(',')
-
-line = remove_eol(properties.readline())
+line = environ['FOLDERS']
 folders = line.split(',')
 
-line = remove_eol(properties.readline())
-root_category = line.split(',')
+site_membership_role = environ['SITE_MEMBERSHIP_ROLE']
 
-line = remove_eol(properties.readline())
-rm_categories = line.split(',')
+line = environ['CREATE_RM_SITE']
+create_rm_site = False
+if line.lower() == 'true':
+    create_rm_site = True
 
-print(users)
-print(groups)
-print(sites)
-print(rm_sites)
-print(folders)
-print(root_category)
-print(rm_categories)
+    line = environ['ROOT_CATEGORY']
+    root_category = line.split(',')
+
+    line = environ['CATEGORIES']
+    rm_categories = line.split(',')
+
+    rm_role = environ['RM_ROLE']
 
 
 def handle_user(user_id):
@@ -179,9 +158,9 @@ def handle_site(site_id, user_list, group_list, folder_list):
         print('Unknown error occurred when checking site.  Stopping subsequent activity.')
         return
     for user in user_list:
-        handle_site_memberships(user, 'SiteManager', site_path, site_id)
+        handle_site_memberships(user, site_membership_role, site_path, site_id)
     for group in group_list:
-        handle_site_memberships('GROUP_' + group, 'SiteManager', site_path, site_id)
+        handle_site_memberships('GROUP_' + group, site_membership_role, site_path, site_id)
     for folder in folder_list:
         handle_folder(folder, site_id, site_guid)
 
@@ -228,7 +207,6 @@ def find_rm_role(rm_role):
         if display_name == rm_role:
             print('RM Role Name: ' + display_name + ' RM Role ID: ' + group_id)
             return group_id
-    return ""
 
 
 def add_user_as_rm_admin(admin_id, user_name):
@@ -269,9 +247,9 @@ def handle_rm_site(rm_site_name, user_list, group_list, root_cat, category_list)
         post_rm_site = requests.post(url=rm_site_post_url, data=rm_site_payload, headers=headers)
         print('Created RM site')
     for user in user_list:
-        handle_site_memberships(user, 'SiteManager', site_path, site_id)
+        handle_site_memberships(user, site_membership_role, site_path, site_id)
     for group in group_list:
-        handle_site_memberships('GROUP_' + group, 'SiteManager', site_path, site_id)
+        handle_site_memberships('GROUP_' + group, site_membership_role, site_path, site_id)
     for root_c in root_cat:
         root_guid = handle_root_category(root_c)
         for category in category_list:
@@ -294,12 +272,13 @@ for group in groups:
 
 for site in sites:
     handle_site(site, users, groups, folders)
+a
 
-for rm_site in rm_sites:
-    handle_rm_site(rm_site, users, groups, root_category, rm_categories)
+if create_rm_site:
+    handle_rm_site('rm', users, groups, root_category, rm_categories)
 
-rm_admin_id = find_rm_role('Records Management Administrator')
+    rm_admin_id = find_rm_role(rm_role)
 
-if rm_admin_id != "":
-    for group in groups:
-        add_group_as_rm_admin(rm_admin_id, 'GROUP_' + group)
+    if rm_admin_id:
+        for group in groups:
+            add_group_as_rm_admin(rm_admin_id, 'GROUP_' + group)

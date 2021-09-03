@@ -2,6 +2,9 @@ import base64
 import requests
 import json
 from os import environ
+#from time import sleep
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 
 # This sets up an Alfresco 7.0.0 instance to work with ArkCase
 # It reads values from environment variables
@@ -18,6 +21,9 @@ from os import environ
 # CATEGORIES = Case Files,Complaints,Document Repositories,Requests,Tasks,Consultations,SAR
 # SITE_MEMBERSHIP_ROLE = SiteManager
 # RM_ROLE = Records Management Administrator
+# CONNECTION_RETRIES: 5
+# CONNECTION_BACKOFF_FACTOR: 10
+
 
 content_services_path = '/alfresco/api/-default-/public/alfresco/versions/1'
 ags_services_path = '/alfresco/api/-default-/public/gs/versions/1'
@@ -29,16 +35,16 @@ base64string = base64.b64encode(bytes('%s:%s' % (username, password), 'ascii'))
 headers = {"Authorization": "Basic %s" % base64string.decode('utf-8'), 'Content\u002DType': "application/json",
            "Accept": "application/json"}
 
-line = environ['USERS']
+line = environ.get('USERS', '')
 users = line.split(',')
 
-line = environ['GROUPS']
+line = environ.get('GROUPS', '')
 groups = line.split(',')
 
-line = environ['SITES']
+line = environ.get('SITES', '')
 sites = line.split(',')
 
-line = environ['FOLDERS']
+line = environ.get('FOLDERS', '')
 folders = line.split(',')
 
 site_membership_role = environ['SITE_MEMBERSHIP_ROLE']
@@ -127,8 +133,11 @@ def handle_site_memberships(member, role, site_path, site_id):
     status_code = assign_role.status_code
     if status_code == 409:
         print(member + ' is already a member of ' + site_id)
-    else:
+    elif status_code == 201:
         print(member + ' added as a site manager to ' + site_id)
+    else:
+        print(status_code)
+        print('Unknown error occurred when creating membership')
 
 
 def handle_site(site_id, user_list, group_list, folder_list):
@@ -176,10 +185,13 @@ def handle_root_category(root):
         for root_entry in root_json['list']['entries']:
             print('Root category already exists: ' + root_entry['entry']['id'])
             return root_entry['entry']['id']
-    else:
+    elif post_root.status_code == 201:
         root_json = post_root.json()
         print('Created root category: ' + root + ' with id ' + root_json['entry']['id'])
         return root_json['entry']['id']
+    else:
+        print(status_code)
+        print('Unknown error occurred when creating root category')
 
 
 def handle_category(category_name, root_guid):
@@ -203,7 +215,6 @@ def find_rm_role(rm_role):
     for entry in json_resp['list']['entries']:
         group_id = str(entry['entry']['id'])
         display_name = str(entry['entry']['displayName'])
-        print('displayName: ' + display_name)
         if display_name == rm_role:
             print('RM Role Name: ' + display_name + ' RM Role ID: ' + group_id)
             return group_id
@@ -213,7 +224,13 @@ def add_user_as_rm_admin(admin_id, user_name):
     groups_post = hostname + content_services_path + '/groups/' + admin_id + '/members'
     groups_payload = json.dumps({'id': user_name, 'memberType': 'PERSON'})
     post_groups = requests.post(url=groups_post, data=groups_payload, headers=headers)
-    print(post_groups)
+    status_code = post_groups.status_code
+    if status_code == 201:
+        print('Success adding ' + user_name + ' to role ' + admin_id)
+    elif status_code == 409:
+        print(user_name + ' is already a member of ' + admin_id)
+    else:
+        print('Error [' + str(status_code) + '] adding ' + user_name + ' to role ' + admin_id)
 
 
 def add_group_as_rm_admin(admin_id, group_name):
@@ -255,14 +272,30 @@ def handle_rm_site(rm_site_name, user_list, group_list, root_cat, category_list)
         for category in category_list:
             handle_category(category, root_guid)
 
+######################
+# Start of main code
+######################
+
+line = environ.get('USERS', '')
+connection_retries = int(environ.get('CONNECTION_RETRIES', 5))
+connection_backoff_factor = int(environ.get('CONNECTION_BACKOFF_FACTOR', 10))
+connection_failure = True
+print ('retries: ' + str(connection_retries) + ' interval: ' + str(connection_backoff_factor))
 
 alfresco_probe_url = hostname + content_services_path + "/probes/-live-"
-get_probe = requests.get(url=alfresco_probe_url, headers=headers)
-if get_probe.status_code != 200:
-    print('Alfresco has not finished starting')
-    quit()
 
-print('Alfresco finished starting')
+retry_strategy = Retry(
+    total=connection_retries,
+    backoff_factor=connection_backoff_factor
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+http = requests.Session()
+http.mount("https://", adapter)
+http.mount("http://", adapter)
+get_probe = http.get(url=alfresco_probe_url, headers=headers)
+
+if get_probe.status_code == 200:
+    print('Alfresco finished starting')
 
 for user in users:
     handle_user(user)
@@ -272,7 +305,6 @@ for group in groups:
 
 for site in sites:
     handle_site(site, users, groups, folders)
-a
 
 if create_rm_site:
     handle_rm_site('rm', users, groups, root_category, rm_categories)
